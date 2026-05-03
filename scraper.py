@@ -21,16 +21,31 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 NTFY_TOPIC      = os.environ.get("NTFY_TOPIC", "coop-alerts-uwindsor-change-this")
 NTFY_SERVER     = "https://ntfy.sh"
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
-MAX_AGE_DAYS    = 7
+MAX_AGE_DAYS    = 60   # 60 days — catches fall/winter/summer postings months in advance
 SEEN_FILE       = "seen_jobs.json"
 LOOP_MINUTES    = 5
 MAX_WORKERS     = 10   # concurrent threads for scraping
 
 COOP_KEYWORDS = [
+    # Generic co-op / intern
     "co-op","coop","co op","intern","internship","work term","work-term",
     "new grad","new graduate","student placement","student position",
-    "4 month","8 month","summer student","pey coop","4-month","8-month",
-    "junior developer","entry level","entry-level","student developer",
+    "4 month","8 month","4-month","8-month","student developer",
+    "junior developer","entry level","entry-level","summer student",
+    # Fall / September / September–December terms  ← NEW
+    "fall 2025","fall 2026","fall term","fall co-op","fall intern",
+    "fall coop","fall placement","fall work term",
+    "september 2025","september 2026","sept 2025","sept 2026",
+    "sep 2025","sep 2026",
+    "autumn 2025","autumn 2026",
+    "winter 2026","winter 2025","winter co-op","winter intern",
+    "winter term","winter placement","winter work term",
+    "january 2026","january 2027",
+    "summer 2025","summer 2026","summer co-op","summer intern",
+    "summer term","summer placement",
+    "may 2025","may 2026",
+    "term 1","term 2","term 3",   # some schools use term numbers
+    "pey","pey co-op",            # U of T Professional Experience Year
 ]
 
 ONTARIO_KEYWORDS = [
@@ -299,6 +314,34 @@ INDEED_RSS_SEARCHES = [
      "https://ca.indeed.com/rss?q=product+manager+intern+co-op&l=Ontario&sort=date&fromage=14"),
     ("Backend Intern Ontario",
      "https://ca.indeed.com/rss?q=backend+developer+intern+co-op&l=Ontario&sort=date&fromage=7"),
+
+    # ── Fall / September term specific ──────────────────────────
+    ("Fall 2025 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=fall+2025+co-op+intern&l=Ontario&sort=date&fromage=60"),
+    ("Fall 2026 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=fall+2026+co-op+intern&l=Ontario&sort=date&fromage=60"),
+    ("September 2025 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=september+2025+co-op+software&l=Ontario&sort=date&fromage=60"),
+    ("September 2026 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=september+2026+co-op+software&l=Ontario&sort=date&fromage=60"),
+    ("Fall Term SWE Ontario",
+     "https://ca.indeed.com/rss?q=fall+term+software+developer+co-op&l=Ontario&sort=date&fromage=60"),
+    ("Fall Intern Tech Ontario",
+     "https://ca.indeed.com/rss?q=fall+internship+technology+software&l=Ontario&sort=date&fromage=30"),
+
+    # ── Winter / January term ────────────────────────────────────
+    ("Winter 2026 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=winter+2026+co-op+intern&l=Ontario&sort=date&fromage=60"),
+    ("Winter 2026 SWE Ontario",
+     "https://ca.indeed.com/rss?q=winter+2026+software+developer&l=Ontario&sort=date&fromage=60"),
+    ("January 2026 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=january+2026+co-op+software&l=Ontario&sort=date&fromage=60"),
+
+    # ── Summer / May term ────────────────────────────────────────
+    ("Summer 2026 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=summer+2026+co-op+intern&l=Ontario&sort=date&fromage=60"),
+    ("Summer 2026 SWE Ontario",
+     "https://ca.indeed.com/rss?q=summer+2026+software+developer+intern&l=Ontario&sort=date&fromage=60"),
 ]
 
 # ═══════════════════════════════════════════════════════════
@@ -323,6 +366,30 @@ LINKEDIN_SEARCHES = [
     ("LinkedIn: Cyber Intern Ontario",
      "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
      "?keywords=cybersecurity+intern+co-op&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+
+    # ── Fall / September term ────────────────────────────────────
+    ("LinkedIn: Fall 2025 Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=fall+2025+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    ("LinkedIn: Fall 2026 Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=fall+2026+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    ("LinkedIn: September Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=september+2026+co-op+intern+software&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    ("LinkedIn: Fall Term SWE Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=fall+term+software+developer+co-op&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+
+    # ── Winter / January term ────────────────────────────────────
+    ("LinkedIn: Winter 2026 Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=winter+2026+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+
+    # ── Summer / May term ────────────────────────────────────────
+    ("LinkedIn: Summer 2026 Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=summer+2026+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
 ]
 
 # ═══════════════════════════════════════════════════════════
