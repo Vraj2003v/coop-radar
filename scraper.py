@@ -360,22 +360,40 @@ def save_seen(seen):
     with open(SEEN_FILE, "w") as f: json.dump(sorted(list(seen)), f, indent=2)
 
 def notify(title, company, location, url, source):
-    msg = f"🏢 {company}\n📍 {location or 'Ontario, Canada'}\n📌 {source}"
+    # Strip ALL whitespace/newlines — HTTP headers cannot contain them
+    clean_title = " ".join(title.split())[:60]
+    clean_loc   = " ".join((location or "Ontario, Canada").split())
+    clean_url   = (url or "").split()[0] if url else ""
+
+    # Encode emoji-free ASCII title for HTTP header (latin-1 safe)
+    ascii_title = clean_title.encode("ascii", errors="ignore").decode("ascii").strip()
+    if not ascii_title:
+        ascii_title = "New Co-op Posted"
+
+    # Message body sent as UTF-8 data — emojis are fine here
+    msg = (
+        f"Position: {clean_title}\n"
+        f"Company:  {company}\n"
+        f"Location: {clean_loc}\n"
+        f"Source:   {source}"
+    )
+
     try:
         r = requests.post(
             f"{NTFY_SERVER}/{NTFY_TOPIC}",
             data=msg.encode("utf-8"),
             headers={
-                "Title":    f"🚨 {title[:60]}",
-                "Priority": "high",
-                "Tags":     "briefcase,maple_leaf,bell",
-                "Click":    url,
-                "Actions":  f"view, Apply Now, {url}, clear=true",
+                "Title":        ascii_title,          # ASCII only — no emoji, no newlines
+                "Priority":     "high",
+                "Tags":         "briefcase,maple_leaf,bell",
+                "Click":        clean_url,
+                "Actions":      f"view, Apply Now, {clean_url}, clear=true",
+                "Content-Type": "text/plain; charset=utf-8",
             }, timeout=10)
-        ok = "✅" if r.status_code == 200 else f"⚠️{r.status_code}"
-        print(f"    {ok} [{company}] {title[:55]}")
+        ok = "+" if r.status_code == 200 else f"? {r.status_code}"
+        print(f"    [{ok}] [{company}] {clean_title[:50]}")
     except Exception as e:
-        print(f"    ❌ notify: {e}")
+        print(f"    [ERR] notify: {e}")
 
 # ═══════════════════════════════════════════════════════════
 # SCRAPERS
