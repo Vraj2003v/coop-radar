@@ -32,7 +32,7 @@ jobs:
       - name: 🔍 Run CoopRadar
         env:
           NTFY_TOPIC:      ${{ secrets.NTFY_TOPIC }}
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SHEET_ID: 1D9L2Lyc1MXXHrrmhxmCERE628zNja92YPqVG6KUPj6M
         run: python scraper.py
 
       - name: 💾 Commit seen_jobs.json
