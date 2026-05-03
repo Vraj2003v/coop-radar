@@ -1,0 +1,44 @@
+name: CoopRadar v4 — Ontario Co-op Alerts (Every ~1 Min)
+
+on:
+  schedule:
+    # Runs every 5 min — Python loops internally every ~1 min
+    - cron: '*/5 * * * *'
+  workflow_dispatch:   # manual trigger from Actions tab
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐍 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install deps
+        run: pip install -r requirements.txt
+
+      - name: 🔍 Run CoopRadar
+        env:
+          NTFY_TOPIC:      ${{ secrets.NTFY_TOPIC }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: python scraper.py
+
+      - name: 💾 Commit seen_jobs.json
+        run: |
+          git config user.email "coopalert-bot@github.com"
+          git config user.name  "CoopRadar Bot"
+          git add seen_jobs.json
+          git diff --staged --quiet || git commit -m "chore: update seen jobs [skip ci]"
+          git push
