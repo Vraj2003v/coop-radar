@@ -1,6 +1,7 @@
 """
 CoopRadar v4 - Ontario Co-op/Intern Alert System
 =================================================
+MODIFIED: Tuned for Winter 2027 / January 2027 intake
 - 150+ Ontario tech/finance/telecom companies
 - Concurrent scraping (3–4x faster)
 - Greenhouse, Lever, Workday, Indeed RSS, LinkedIn, custom URLs
@@ -18,13 +19,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ═══════════════════════════════════════════════════════════
 # CONFIG
 # ═══════════════════════════════════════════════════════════
-NTFY_TOPIC      = os.environ.get("NTFY_TOPIC", "coop-alerts-uwindsor-change-this")
-NTFY_SERVER     = "https://ntfy.sh"
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
-MAX_AGE_DAYS    = 60   # 60 days — catches fall/winter/summer postings months in advance
-SEEN_FILE       = "seen_jobs.json"
-LOOP_MINUTES    = 5
-MAX_WORKERS     = 10   # concurrent threads for scraping
+NTFY_TOPIC       = os.environ.get("NTFY_TOPIC", "coop-alerts-uwindsor-change-this")
+NTFY_SERVER      = "https://ntfy.sh"
+GOOGLE_SHEET_ID  = os.environ.get("GOOGLE_SHEET_ID", "")
+MAX_AGE_DAYS     = 90   # 90 days — companies start posting Winter 2027 as early as Sep/Oct 2026
+SEEN_FILE        = "seen_jobs.json"
+LOOP_MINUTES     = 5
+MAX_WORKERS      = 10   # concurrent threads for scraping
 
 COOP_KEYWORDS = [
     # Generic co-op / intern
@@ -32,20 +33,30 @@ COOP_KEYWORDS = [
     "new grad","new graduate","student placement","student position",
     "4 month","8 month","4-month","8-month","student developer",
     "junior developer","entry level","entry-level","summer student",
-    # Fall / September / September–December terms  ← NEW
-    "fall 2025","fall 2026","fall term","fall co-op","fall intern",
-    "fall coop","fall placement","fall work term",
-    "september 2025","september 2026","sept 2025","sept 2026",
-    "sep 2025","sep 2026",
-    "autumn 2025","autumn 2026",
-    "winter 2026","winter 2025","winter co-op","winter intern",
+
+    # ── Winter 2027 / January 2027 — PRIMARY TARGET ──────────────────
+    "winter 2027","winter co-op","winter intern",
     "winter term","winter placement","winter work term",
-    "january 2026","january 2027",
-    "summer 2025","summer 2026","summer co-op","summer intern",
-    "summer term","summer placement",
-    "may 2025","may 2026",
-    "term 1","term 2","term 3",   # some schools use term numbers
-    "pey","pey co-op",            # U of T Professional Experience Year
+    "january 2027","jan 2027",
+    "february 2027","feb 2027",
+    "spring 2027","spring co-op","spring intern",
+    "spring term","spring placement",
+    "w2027","w27",                      # shorthand some postings use
+
+    # ── Winter 2026 — still active / rolling postings ────────────────
+    "winter 2026","january 2026","jan 2026",
+
+    # ── Fall 2026 — often posted alongside next winter ────────────────
+    "fall 2026","fall co-op","fall intern","fall term","fall placement",
+    "fall work term","september 2026","sept 2026","sep 2026","autumn 2026",
+
+    # ── Summer 2027 — early postings appear now ──────────────────────
+    "summer 2027","summer co-op","summer intern","summer term",
+    "may 2027","summer placement",
+
+    # ── Generic term numbers ──────────────────────────────────────────
+    "term 1","term 2","term 3",
+    "pey","pey co-op",   # U of T Professional Experience Year
 ]
 
 ONTARIO_KEYWORDS = [
@@ -59,9 +70,9 @@ ONTARIO_KEYWORDS = [
 ]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
     "Accept-Language": "en-CA,en;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Encoding": "gzip, deflate, br",
 }
 
@@ -70,214 +81,121 @@ HEADERS = {
 # ═══════════════════════════════════════════════════════════
 GREENHOUSE_COMPANIES = {
     # ── Major Canadian Tech ──────────────────────────────────────
-    "shopify":           "Shopify",
-    "d2l":               "D2L (Desire2Learn)",
-    "wealthsimple":      "Wealthsimple",
-    "hootsuite":         "Hootsuite",
-    "lightspeed":        "Lightspeed Commerce",
-    "coveo":             "Coveo",
-    "cohere":            "Cohere AI",
-    "1password":         "1Password",
-    "assent":            "Assent Compliance",
-    "ecobee":            "ecobee",
-    "kinaxis":           "Kinaxis",
-    "magnet":            "Magnet Forensics",
-    "fullscript":        "Fullscript",
-    "tucows":            "Tucows",
-    "resolver":          "Resolver",
-    "loopio":            "Loopio",
-    "crowdriff":         "CrowdRiff",
-    "myplanet":          "Myplanet",
-    "solink":            "Solink",
-    "miovision":         "Miovision",
-    "intelex":           "Intelex Technologies",
-    "martello":          "Martello Technologies",
-    "fellow":            "Fellow.app",
-    "relay":             "Relay Financial",
-    "benchling":         "Benchling",
-    "absorblms":         "Absorb LMS",
-    "clearco":           "Clearco",
-    "ritual":            "Ritual",
-    "ubisoft":           "Ubisoft",
-    "nuvei":             "Nuvei",
-    "vendasta":          "Vendasta",
-    "benevity":          "Benevity",
-    "partnerstack":      "PartnerStack",
-    "dialogue":          "Dialogue Health",
-    "inkblot":           "Inkblot Therapy",
-    "league":            "League Health",
-    "wattpad":           "Wattpad",
-    "freshbooks":        "FreshBooks",
-    "wavefinancial":     "Wave Financial",
-    "klue":              "Klue",
-    "certn":             "Certn",
-    "coconutsoftware":   "Coconut Software",
-    "snapcommerce":      "Snapcommerce",
-    "drop":              "Drop Technologies",
-    "financeit":         "Financeit",
-    "nudge":             "Nudge",
-    "pivotal":           "Pivotal Canada",
-    "kognitive":         "Kognitive Networks",
-    "macadamian":        "Macadamian Technologies",
-    "distributive":      "Distributive",
+    "shopify":"Shopify","d2l":"D2L (Desire2Learn)","wealthsimple":"Wealthsimple",
+    "hootsuite":"Hootsuite","lightspeed":"Lightspeed Commerce","coveo":"Coveo",
+    "cohere":"Cohere AI","1password":"1Password","assent":"Assent Compliance",
+    "ecobee":"ecobee","kinaxis":"Kinaxis","magnet":"Magnet Forensics",
+    "fullscript":"Fullscript","tucows":"Tucows","resolver":"Resolver",
+    "loopio":"Loopio","crowdriff":"CrowdRiff","myplanet":"Myplanet",
+    "solink":"Solink","miovision":"Miovision","intelex":"Intelex Technologies",
+    "martello":"Martello Technologies","fellow":"Fellow.app","relay":"Relay Financial",
+    "benchling":"Benchling","absorblms":"Absorb LMS","clearco":"Clearco",
+    "ritual":"Ritual","ubisoft":"Ubisoft","nuvei":"Nuvei",
+    "vendasta":"Vendasta","benevity":"Benevity","partnerstack":"PartnerStack",
+    "dialogue":"Dialogue Health","inkblot":"Inkblot Therapy","league":"League Health",
+    "wattpad":"Wattpad","freshbooks":"FreshBooks","wavefinancial":"Wave Financial",
+    "klue":"Klue","certn":"Certn","coconutsoftware":"Coconut Software",
+    "snapcommerce":"Snapcommerce","drop":"Drop Technologies","financeit":"Financeit",
+    "nudge":"Nudge","pivotal":"Pivotal Canada","kognitive":"Kognitive Networks",
+    "macadamian":"Macadamian Technologies","distributive":"Distributive",
     # ── Finance & Fintech ──────────────────────────────────────────
-    "cifinancial":       "CI Financial",
-    "manuliferecruiting":"Manulife",
-    "sunlife":           "Sun Life Financial",
-    "intactfc":          "Intact Financial",
-    "equalizer":         "EQ Bank (Equitable Bank)",
-    "gieseckedevrient":  "Giesecke+Devrient",
-    "borrowell":         "Borrowell",
-    "nesto":             "nesto",
-    "properly":          "Properly",
-    "hardbacon":         "Hardbacon",
-    "mylo":              "Mylo Financial",
-    "paymi":             "Paymi",
-    "tulip-retail":      "Tulip Retail",
+    "cifinancial":"CI Financial","manuliferecruiting":"Manulife",
+    "sunlife":"Sun Life Financial","intactfc":"Intact Financial",
+    "equalizer":"EQ Bank (Equitable Bank)","borrowell":"Borrowell",
+    "nesto":"nesto","properly":"Properly","hardbacon":"Hardbacon",
+    "mylo":"Mylo Financial","tulip-retail":"Tulip Retail",
     # ── Enterprise / Cloud / SaaS ──────────────────────────────────
-    "opentext":          "OpenText",
-    "descartes":         "Descartes Systems",
-    "ptc":               "PTC",
-    "maplesoft":         "Maplesoft",
-    "intelliware":       "Intelliware",
-    "aislelabs":         "Aislelabs",
-    "thinking-phone":    "Fuze / Thinking Phone",
-    "vertafore":         "Vertafore",
-    "zynga":             "Zynga Toronto",
-    "uken":              "Uken Games",
-    "caseware":          "CaseWare",
-    "tempoplatform":     "Tempo Platform",
-    "tulip":             "Tulip",
-    "procurify":         "Procurify",
-    "proposify":         "Proposify",
-    "validere":          "Validere",
-    "sparkcognition":    "SparkCognition",
-    "integrate":         "Integrate",
-    "vena":              "Vena Solutions",
-    "klipfolio":         "Klipfolio",
-    "chango":            "Chango",
-    "genesys":           "Genesys",
-    "liferay":           "Liferay",
+    "opentext":"OpenText","descartes":"Descartes Systems","ptc":"PTC",
+    "maplesoft":"Maplesoft","intelliware":"Intelliware","aislelabs":"Aislelabs",
+    "vertafore":"Vertafore","zynga":"Zynga Toronto","uken":"Uken Games",
+    "caseware":"CaseWare","tempoplatform":"Tempo Platform","tulip":"Tulip",
+    "procurify":"Procurify","proposify":"Proposify","validere":"Validere",
+    "vena":"Vena Solutions","klipfolio":"Klipfolio","genesys":"Genesys",
     # ── Cybersecurity ─────────────────────────────────────────────
-    "cybereason":        "Cybereason",
-    "darktrace":         "Darktrace",
-    "forescout":         "Forescout Technologies",
-    "securityscorecard": "SecurityScorecard",
-    "beyondtrust":       "BeyondTrust",
-    "irdeto":            "Irdeto",
-    "telos":             "Telos",
+    "cybereason":"Cybereason","darktrace":"Darktrace","forescout":"Forescout Technologies",
+    "securityscorecard":"SecurityScorecard","beyondtrust":"BeyondTrust","irdeto":"Irdeto",
     # ── Telecom / Hardware ─────────────────────────────────────────
-    "ciena":             "Ciena",
-    "ribbon":            "Ribbon Communications",
-    "ericsson":          "Ericsson Canada",
+    "ciena":"Ciena","ribbon":"Ribbon Communications","ericsson":"Ericsson Canada",
     # ── Health Tech ───────────────────────────────────────────────
-    "pointclickcare":    "PointClickCare",
-    "telmediq":          "TelmedIQ",
-    "maple":             "Maple Health",
-    "greenspace":        "Greenspace Mental Health",
-    "inkblottherapy":    "Inkblot Therapy",
-    "pillway":           "Pillway",
+    "pointclickcare":"PointClickCare","telmediq":"TelmedIQ","maple":"Maple Health",
+    "greenspace":"Greenspace Mental Health","pillway":"Pillway",
     # ── Media / Consumer ─────────────────────────────────────────
-    "wattpad":           "Wattpad",
-    "songkick":          "Songkick",
-    "tucows":            "Tucows",
-    "verticalscope":     "VerticalScope",
-    "tripadvisor":       "TripAdvisor Canada",
-    # ── Professional Services ─────────────────────────────────────
-    "mcsquare":          "MC Square",
-    "praxis":            "Praxis",
-    "fullscript":        "Fullscript",
+    "songkick":"Songkick","verticalscope":"VerticalScope",
 }
 
 # ═══════════════════════════════════════════════════════════
 # LEVER ATS COMPANIES
 # ═══════════════════════════════════════════════════════════
 LEVER_COMPANIES = {
-    # ── Canadian Tech ─────────────────────────────────────────────
-    "koho":              "KOHO Financial",
-    "geotab":            "Geotab",
-    "vehikl":            "Vehikl",
-    "pelmorex":          "Pelmorex / The Weather Network",
-    "brock-solutions":   "Brock Solutions",
-    "biosign":           "BioSign Technologies",
-    "distributive":      "Distributive",
-    "nudgesecurity":     "Nudge Security",
-    "tulip-retail":      "Tulip Retail",
-    "magnetforensics":   "Magnet Forensics",
-    "intellicheck":      "Intellicheck",
-    "proofpoint":        "Proofpoint",
-    "mcafee":            "McAfee Canada",
-    "arcticwolf":        "Arctic Wolf Networks",
-    "s1seven":           "S1Seven",
-    "wizecommerce":      "WizeCommerce",
-    "xanadu":            "Xanadu Quantum",
-    "evolution":         "Evolution Mining",
-    # ── Finance / Fintech ─────────────────────────────────────────
-    "wealthsimple":      "Wealthsimple (Lever)",
-    "mogo":              "Mogo Financial",
-    "paytm":             "Paytm Canada",
-    "payfare":           "Payfare",
-    "financeit":         "Financeit",
-    "clearbanc":         "Clearco / Clearbanc",
-    # ── Professional ─────────────────────────────────────────────
-    "paladin":           "Paladin Cyber",
+    "koho":"KOHO Financial","geotab":"Geotab","vehikl":"Vehikl",
+    "pelmorex":"Pelmorex / The Weather Network","brock-solutions":"Brock Solutions",
+    "distributive":"Distributive","nudgesecurity":"Nudge Security",
+    "magnetforensics":"Magnet Forensics","proofpoint":"Proofpoint",
+    "arcticwolf":"Arctic Wolf Networks","xanadu":"Xanadu Quantum",
+    "wealthsimple":"Wealthsimple (Lever)","mogo":"Mogo Financial",
+    "payfare":"Payfare","financeit":"Financeit","clearbanc":"Clearco / Clearbanc",
+    "paladin":"Paladin Cyber",
 }
 
 # ═══════════════════════════════════════════════════════════
 # WORKDAY ATS — Banks, Insurance, Enterprise
-# (scraped via HTML — no public API)
 # ═══════════════════════════════════════════════════════════
 WORKDAY_COMPANIES = {
-    "RBC":          "https://jobs.rbc.com/ca/en/search-results?keywords=co-op+intern&country=Canada",
-    "TD Bank":      "https://jobs.td.com/en-CA/job-search-results/?keyword=co-op+intern",
-    "BMO":          "https://bmo.wd3.myworkdayjobs.com/en-US/Privileged/jobs?q=co-op+intern",
-    "Scotiabank":   "https://jobs.scotiabank.com/search/?q=co-op+intern&l=Ontario",
-    "CIBC":         "https://cibc.wd3.myworkdayjobs.com/en-US/campus/jobs?q=co-op+intern",
-    "Manulife":     "https://manulife.wd3.myworkdayjobs.com/en-US/MFCJH_Careers/jobs?q=co-op+intern",
-    "Sun Life":     "https://sunlife.wd3.myworkdayjobs.com/en-US/Experienced-EN/jobs?q=co-op+intern",
-    "Intact":       "https://careers.intactfc.com/ca/en/search-results?keywords=intern+co-op",
-    "CI Financial": "https://careers.cifinancial.com/en/search-results?keywords=intern+co-op",
-    "Ceridian/Dayforce": "https://dayforce.wd1.myworkdayjobs.com/en-US/Dayforce/jobs?q=intern+co-op",
-    "OpenText":     "https://opentext.wd1.myworkdayjobs.com/en-US/careers/jobs?q=co-op+intern",
-    "Autodesk":     "https://autodesk.wd1.myworkdayjobs.com/en-US/Ext/jobs?q=intern",
-    "Motorola":     "https://motorolasolutions.wd5.myworkdayjobs.com/en-US/Careers/jobs?q=co-op+intern",
-    "Proofpoint":   "https://proofpoint.wd5.myworkdayjobs.com/en-US/ProofpointCareers/jobs?q=intern",
-    "Nokia":        "https://fa-evmr-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs?keyword=co-op+intern",
-    "Citi Canada":  "https://citi.wd5.myworkdayjobs.com/en-US/Citi_Early_Careers_Events_Site/jobs?q=intern",
-    "Mackenzie Investments": "https://mackenzieinvestments.wd3.myworkdayjobs.com/en-US/External/jobs?q=intern",
-    "KPMG Canada":  "https://jobs.kpmg.ca/ca/en/search-results?keywords=co-op+intern",
-    "Deloitte Canada": "https://careers.deloitte.ca/ca/en/search-results?keywords=co-op+intern",
-    "PwC Canada":   "https://pwc.wd3.myworkdayjobs.com/en-US/Global_Campus_Careers/jobs?q=co-op",
-    "EY Canada":    "https://eyglobal.yello.co/jobs?department_id=&keyword=co-op+intern&location=Ontario",
-    "IBM Canada":   "https://careers.ibm.com/jobs?shiftby=25&limit=25&start=0&keyword=co-op+intern&country=CA",
-    "Amazon Canada":"https://www.amazon.jobs/en/search?base_query=intern+co-op&loc_query=Ontario%2C+Canada",
-    "Microsoft CA": "https://jobs.careers.microsoft.com/global/en/search?q=intern+co-op&lc=Ontario%2C+Canada",
-    "Google Canada":"https://careers.google.com/jobs/results/?q=intern+co-op&location=Ontario%2C+Canada",
-    "Toyota TMMC":  "https://tmmc.ca/en/coop-jobs/",
-    "General Motors":"https://search-careers.gm.com/jobs?keywords=co-op+intern&location=Ontario",
-    "Rogers":       "https://jobs.rogers.com/search/?q=intern+co-op&l=Ontario",
-    "Bell Canada":  "https://jobs.bell.ca/ca/en/search-results?keywords=intern+co-op",
-    "TELUS":        "https://careers.telus.com/search/?q=intern+co-op&l=Ontario",
-    "Ericsson CA":  "https://jobs.ericsson.com/careers?query=co-op+intern&location=Ontario",
-    "Loblaw":       "https://myview.wd3.myworkdayjobs.com/en-US/loblaw_careers_entry/jobs?q=intern+co-op",
-    "Sobeys/Empire":"https://careers.sobeys.com/en-CA/search-results?keywords=intern+co-op",
-    "Canadian Tire":"https://canadiantire.wd3.myworkdayjobs.com/en-US/CTCCareers/jobs?q=intern+co-op",
-    "Loblaws Digital":"https://jobs.loblaw.ca/search/?q=developer+co-op+intern&l=Ontario",
-    "TechInsights": "https://www.techinsights.com/company/careers",
-    "Zebra Technologies":"https://zebra.eightfold.ai/careers?query=intern+co-op&location=Ontario",
-    "SAP Canada":   "https://jobs.sap.com/search/?q=intern+co-op&location=Ontario%2C+Canada",
-    "Capital One CA":"https://www.capitalonecareers.com/search-jobs?keyword=intern&location=Ontario",
-    "Hubspot CA":   "https://www.hubspot.com/careers/jobs?q=intern+co-op&country=Canada",
-    "Uber Canada":  "https://www.uber.com/global/en/careers/list/?query=intern+co-op&department=University",
-    "Lumentum":     "https://lumentum.wd5.myworkdayjobs.com/en-US/LITE/jobs?q=co-op+intern",
+    "RBC":           "https://jobs.rbc.com/ca/en/search-results?keywords=co-op+intern&country=Canada",
+    "TD Bank":       "https://jobs.td.com/en-CA/job-search-results/?keyword=co-op+intern",
+    "BMO":           "https://bmo.wd3.myworkdayjobs.com/en-US/Privileged/jobs?q=co-op+intern",
+    "Scotiabank":    "https://jobs.scotiabank.com/search/?q=co-op+intern&l=Ontario",
+    "CIBC":          "https://cibc.wd3.myworkdayjobs.com/en-US/campus/jobs?q=co-op+intern",
+    "Manulife":      "https://manulife.wd3.myworkdayjobs.com/en-US/MFCJH_Careers/jobs?q=co-op+intern",
+    "Sun Life":      "https://sunlife.wd3.myworkdayjobs.com/en-US/Experienced-EN/jobs?q=co-op+intern",
+    "Intact":        "https://careers.intactfc.com/ca/en/search-results?keywords=intern+co-op",
+    "CI Financial":  "https://careers.cifinancial.com/en/search-results?keywords=intern+co-op",
+    "Ceridian/Dayforce":"https://dayforce.wd1.myworkdayjobs.com/en-US/Dayforce/jobs?q=intern+co-op",
+    "OpenText":      "https://opentext.wd1.myworkdayjobs.com/en-US/careers/jobs?q=co-op+intern",
+    "Autodesk":      "https://autodesk.wd1.myworkdayjobs.com/en-US/Ext/jobs?q=intern",
+    "Motorola":      "https://motorolasolutions.wd5.myworkdayjobs.com/en-US/Careers/jobs?q=co-op+intern",
+    "Nokia":         "https://fa-evmr-saasfaprod1.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs?keyword=co-op+intern",
+    "Citi Canada":   "https://citi.wd5.myworkdayjobs.com/en-US/Citi_Early_Careers_Events_Site/jobs?q=intern",
+    "KPMG Canada":   "https://jobs.kpmg.ca/ca/en/search-results?keywords=co-op+intern",
+    "Deloitte Canada":"https://careers.deloitte.ca/ca/en/search-results?keywords=co-op+intern",
+    "PwC Canada":    "https://pwc.wd3.myworkdayjobs.com/en-US/Global_Campus_Careers/jobs?q=co-op",
+    "IBM Canada":    "https://careers.ibm.com/jobs?shiftby=25&limit=25&start=0&keyword=co-op+intern&country=CA",
+    "Amazon Canada": "https://www.amazon.jobs/en/search?base_query=intern+co-op&loc_query=Ontario%2C+Canada",
+    "Microsoft CA":  "https://jobs.careers.microsoft.com/global/en/search?q=intern+co-op&lc=Ontario%2C+Canada",
+    "Google Canada": "https://careers.google.com/jobs/results/?q=intern+co-op&location=Ontario%2C+Canada",
     "BlackBerry QNX":"https://bb.wd3.myworkdayjobs.com/en-US/Student_BlackBerry/jobs?q=co-op+intern",
-    "Mitel":        "https://mitel.wd1.myworkdayjobs.com/en-US/MitelExternal/jobs?q=co-op+intern",
+    "Rogers":        "https://jobs.rogers.com/search/?q=intern+co-op&l=Ontario",
+    "Bell Canada":   "https://jobs.bell.ca/ca/en/search-results?keywords=intern+co-op",
+    "TELUS":         "https://careers.telus.com/search/?q=intern+co-op&l=Ontario",
+    "SAP Canada":    "https://jobs.sap.com/search/?q=intern+co-op&location=Ontario%2C+Canada",
+    "Loblaw":        "https://myview.wd3.myworkdayjobs.com/en-US/loblaw_careers_entry/jobs?q=intern+co-op",
+    "Lumentum":      "https://lumentum.wd5.myworkdayjobs.com/en-US/LITE/jobs?q=co-op+intern",
+    "Mitel":         "https://mitel.wd1.myworkdayjobs.com/en-US/MitelExternal/jobs?q=co-op+intern",
 }
 
 # ═══════════════════════════════════════════════════════════
-# INDEED RSS — Ontario specific (14 targeted searches)
+# INDEED RSS — Winter 2027 / Jan 2027 focused
 # ═══════════════════════════════════════════════════════════
 INDEED_RSS_SEARCHES = [
+    # ── Winter 2027 / January 2027 — PRIMARY ─────────────────────────
+    ("Winter 2027 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=winter+2027+co-op+intern&l=Ontario&sort=date&fromage=90"),
+    ("Winter 2027 SWE Ontario",
+     "https://ca.indeed.com/rss?q=winter+2027+software+developer&l=Ontario&sort=date&fromage=90"),
+    ("January 2027 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=january+2027+co-op+software&l=Ontario&sort=date&fromage=90"),
+    ("Jan 2027 Intern Ontario",
+     "https://ca.indeed.com/rss?q=jan+2027+intern+co-op&l=Ontario&sort=date&fromage=90"),
+    ("Spring 2027 Co-op Ontario",
+     "https://ca.indeed.com/rss?q=spring+2027+co-op+intern&l=Ontario&sort=date&fromage=90"),
+    ("Winter Term Co-op Ontario",
+     "https://ca.indeed.com/rss?q=winter+term+co-op+software&l=Ontario&sort=date&fromage=60"),
+    ("Winter Work Term Ontario",
+     "https://ca.indeed.com/rss?q=winter+work+term+software+developer&l=Ontario&sort=date&fromage=60"),
+    ("Winter Intern Tech Ontario",
+     "https://ca.indeed.com/rss?q=winter+internship+technology+software&l=Ontario&sort=date&fromage=60"),
+
+    # ── Generic (always relevant) ─────────────────────────────────────
     ("SWE Co-op Ontario",
      "https://ca.indeed.com/rss?q=software+developer+co-op&l=Ontario&sort=date&fromage=7"),
     ("SWE Intern Ontario",
@@ -290,8 +208,6 @@ INDEED_RSS_SEARCHES = [
      "https://ca.indeed.com/rss?q=developer+internship+technology&l=Ontario&sort=date&fromage=7"),
     ("ML AI Intern Ontario",
      "https://ca.indeed.com/rss?q=machine+learning+AI+intern+co-op&l=Ontario&sort=date&fromage=14"),
-    ("IT Coop Ontario",
-     "https://ca.indeed.com/rss?q=IT+co-op+student+technology&l=Ontario&sort=date&fromage=7"),
     ("New Grad SWE Ontario",
      "https://ca.indeed.com/rss?q=new+grad+software+engineer&l=Ontario&sort=date&fromage=7"),
     ("QA Test Intern Ontario",
@@ -308,46 +224,42 @@ INDEED_RSS_SEARCHES = [
      "https://ca.indeed.com/rss?q=software+co-op+intern&l=Ottawa%2C+Ontario&sort=date&fromage=7"),
     ("Waterloo Co-op",
      "https://ca.indeed.com/rss?q=software+co-op&l=Waterloo%2C+Ontario&sort=date&fromage=7"),
+    ("Backend Intern Ontario",
+     "https://ca.indeed.com/rss?q=backend+developer+intern+co-op&l=Ontario&sort=date&fromage=7"),
     ("DevOps Cloud Intern Ontario",
      "https://ca.indeed.com/rss?q=devops+cloud+intern+co-op&l=Ontario&sort=date&fromage=14"),
     ("Product PM Intern Ontario",
      "https://ca.indeed.com/rss?q=product+manager+intern+co-op&l=Ontario&sort=date&fromage=14"),
-    ("Backend Intern Ontario",
-     "https://ca.indeed.com/rss?q=backend+developer+intern+co-op&l=Ontario&sort=date&fromage=7"),
 
-    # ── Fall / September term specific ──────────────────────────
-    ("Fall 2025 Co-op Ontario",
-     "https://ca.indeed.com/rss?q=fall+2025+co-op+intern&l=Ontario&sort=date&fromage=60"),
+    # ── Fall 2026 (current cycle, still posting) ──────────────────────
     ("Fall 2026 Co-op Ontario",
      "https://ca.indeed.com/rss?q=fall+2026+co-op+intern&l=Ontario&sort=date&fromage=60"),
-    ("September 2025 Co-op Ontario",
-     "https://ca.indeed.com/rss?q=september+2025+co-op+software&l=Ontario&sort=date&fromage=60"),
     ("September 2026 Co-op Ontario",
      "https://ca.indeed.com/rss?q=september+2026+co-op+software&l=Ontario&sort=date&fromage=60"),
-    ("Fall Term SWE Ontario",
-     "https://ca.indeed.com/rss?q=fall+term+software+developer+co-op&l=Ontario&sort=date&fromage=60"),
-    ("Fall Intern Tech Ontario",
-     "https://ca.indeed.com/rss?q=fall+internship+technology+software&l=Ontario&sort=date&fromage=30"),
-
-    # ── Winter / January term ────────────────────────────────────
-    ("Winter 2026 Co-op Ontario",
-     "https://ca.indeed.com/rss?q=winter+2026+co-op+intern&l=Ontario&sort=date&fromage=60"),
-    ("Winter 2026 SWE Ontario",
-     "https://ca.indeed.com/rss?q=winter+2026+software+developer&l=Ontario&sort=date&fromage=60"),
-    ("January 2026 Co-op Ontario",
-     "https://ca.indeed.com/rss?q=january+2026+co-op+software&l=Ontario&sort=date&fromage=60"),
-
-    # ── Summer / May term ────────────────────────────────────────
-    ("Summer 2026 Co-op Ontario",
-     "https://ca.indeed.com/rss?q=summer+2026+co-op+intern&l=Ontario&sort=date&fromage=60"),
-    ("Summer 2026 SWE Ontario",
-     "https://ca.indeed.com/rss?q=summer+2026+software+developer+intern&l=Ontario&sort=date&fromage=60"),
 ]
 
 # ═══════════════════════════════════════════════════════════
-# LINKEDIN — Ontario (no-login guest API)
+# LINKEDIN — Winter 2027 / Jan 2027 focused
 # ═══════════════════════════════════════════════════════════
 LINKEDIN_SEARCHES = [
+    # ── Winter 2027 / January 2027 — PRIMARY ─────────────────────────
+    ("LinkedIn: Winter 2027 Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=winter+2027+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    ("LinkedIn: January 2027 Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=january+2027+co-op+intern+software&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    ("LinkedIn: Spring 2027 Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=spring+2027+co-op+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    ("LinkedIn: Winter Term Co-op Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=winter+term+co-op+software+developer&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    ("LinkedIn: Winter Work Term Ontario",
+     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+     "?keywords=winter+work+term+software+developer&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+
+    # ── Generic (always relevant) ─────────────────────────────────────
     ("LinkedIn: SWE Co-op Ontario",
      "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
      "?keywords=software+developer+co-op+intern&location=Ontario%2C+Canada&f_JT=I&sortBy=DD&start=0"),
@@ -367,29 +279,10 @@ LINKEDIN_SEARCHES = [
      "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
      "?keywords=cybersecurity+intern+co-op&location=Ontario%2C+Canada&sortBy=DD&start=0"),
 
-    # ── Fall / September term ────────────────────────────────────
-    ("LinkedIn: Fall 2025 Co-op Ontario",
-     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-     "?keywords=fall+2025+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
+    # ── Fall 2026 (current / rolling) ────────────────────────────────
     ("LinkedIn: Fall 2026 Co-op Ontario",
      "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
      "?keywords=fall+2026+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
-    ("LinkedIn: September Co-op Ontario",
-     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-     "?keywords=september+2026+co-op+intern+software&location=Ontario%2C+Canada&sortBy=DD&start=0"),
-    ("LinkedIn: Fall Term SWE Ontario",
-     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-     "?keywords=fall+term+software+developer+co-op&location=Ontario%2C+Canada&sortBy=DD&start=0"),
-
-    # ── Winter / January term ────────────────────────────────────
-    ("LinkedIn: Winter 2026 Co-op Ontario",
-     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-     "?keywords=winter+2026+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
-
-    # ── Summer / May term ────────────────────────────────────────
-    ("LinkedIn: Summer 2026 Co-op Ontario",
-     "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-     "?keywords=summer+2026+co-op+software+intern&location=Ontario%2C+Canada&sortBy=DD&start=0"),
 ]
 
 # ═══════════════════════════════════════════════════════════
@@ -427,30 +320,23 @@ def save_seen(seen):
     with open(SEEN_FILE, "w") as f: json.dump(sorted(list(seen)), f, indent=2)
 
 def notify(title, company, location, url, source):
-    # Strip ALL whitespace/newlines — HTTP headers cannot contain them
     clean_title = " ".join(title.split())[:60]
     clean_loc   = " ".join((location or "Ontario, Canada").split())
     clean_url   = (url or "").split()[0] if url else ""
-
-    # Encode emoji-free ASCII title for HTTP header (latin-1 safe)
     ascii_title = clean_title.encode("ascii", errors="ignore").decode("ascii").strip()
-    if not ascii_title:
-        ascii_title = "New Co-op Posted"
-
-    # Message body sent as UTF-8 data — emojis are fine here
+    if not ascii_title: ascii_title = "New Co-op Posted"
     msg = (
         f"Position: {clean_title}\n"
-        f"Company:  {company}\n"
+        f"Company: {company}\n"
         f"Location: {clean_loc}\n"
-        f"Source:   {source}"
+        f"Source: {source}"
     )
-
     try:
         r = requests.post(
             f"{NTFY_SERVER}/{NTFY_TOPIC}",
             data=msg.encode("utf-8"),
             headers={
-                "Title":        ascii_title,          # ASCII only — no emoji, no newlines
+                "Title":        ascii_title,
                 "Priority":     "high",
                 "Tags":         "briefcase,maple_leaf,bell",
                 "Click":        clean_url,
@@ -458,14 +344,13 @@ def notify(title, company, location, url, source):
                 "Content-Type": "text/plain; charset=utf-8",
             }, timeout=10)
         ok = "+" if r.status_code == 200 else f"? {r.status_code}"
-        print(f"    [{ok}] [{company}] {clean_title[:50]}")
+        print(f"  [{ok}] [{company}] {clean_title[:50]}")
     except Exception as e:
-        print(f"    [ERR] notify: {e}")
+        print(f"  [ERR] notify: {e}")
 
 # ═══════════════════════════════════════════════════════════
 # SCRAPERS
 # ═══════════════════════════════════════════════════════════
-
 def scrape_greenhouse(slug, company_name, seen, lock):
     new_jobs = []
     try:
@@ -485,8 +370,8 @@ def scrape_greenhouse(slug, company_name, seen, lock):
                     new_jobs.append({"id":jid,"title":title,"company":company_name,
                                      "location":location,"url":job_url,"source":"Greenhouse"})
                     seen.add(jid)
-    except Exception as e:
-        pass  # fail silently for speed
+    except Exception:
+        pass
     return new_jobs
 
 def scrape_lever(slug, company_name, seen, lock):
@@ -525,9 +410,9 @@ def scrape_indeed_rss(label, rss_url, seen, lock):
         channel = root.find("channel")
         if not channel: return []
         for item in channel.findall("item"):
-            raw   = (item.findtext("title") or "").strip()
-            url   = (item.findtext("link")  or "").strip()
-            pub   = (item.findtext("pubDate") or "").strip()
+            raw  = (item.findtext("title") or "").strip()
+            url  = (item.findtext("link")  or "").strip()
+            pub  = (item.findtext("pubDate") or "").strip()
             if not is_recent(pub): continue
             parts    = [p.strip() for p in raw.split(" - ")]
             title    = parts[0] if parts else raw
@@ -552,7 +437,7 @@ def scrape_linkedin(label, url, seen, lock):
         if r.status_code != 200: return []
         soup = BeautifulSoup(r.text, "html.parser")
         for card in soup.find_all("li"):
-            title_el   = card.find("h3", class_=lambda c: c and "base-search-card__title"    in str(c))
+            title_el   = card.find("h3", class_=lambda c: c and "base-search-card__title" in str(c))
             company_el = card.find("h4", class_=lambda c: c and "base-search-card__subtitle" in str(c))
             loc_el     = card.find("span", class_=lambda c: c and "job-search-card__location" in str(c))
             link_el    = card.find("a", href=True)
@@ -560,8 +445,8 @@ def scrape_linkedin(label, url, seen, lock):
             if not title_el: continue
             title    = title_el.get_text(strip=True)
             company  = company_el.get_text(strip=True) if company_el else "Unknown"
-            location = loc_el.get_text(strip=True)     if loc_el    else ""
-            job_url  = link_el["href"].split("?")[0]   if link_el   else ""
+            location = loc_el.get_text(strip=True) if loc_el else ""
+            job_url  = link_el["href"].split("?")[0] if link_el else ""
             if time_el and time_el.get("datetime"):
                 try:
                     dt = datetime.fromisoformat(time_el["datetime"].replace("Z","+00:00"))
@@ -580,13 +465,11 @@ def scrape_linkedin(label, url, seen, lock):
     return new_jobs
 
 def scrape_workday_page(company_name, url, seen, lock):
-    """Generic HTML scraper for Workday + custom career pages."""
     new_jobs = []
     try:
         r = requests.get(url, headers=HEADERS, timeout=15)
         if r.status_code != 200: return []
         soup = BeautifulSoup(r.text, "html.parser")
-        # Find all anchor tags that look like job links
         for a in soup.find_all("a", href=True):
             title = a.get_text(strip=True)
             href  = a["href"]
@@ -625,7 +508,7 @@ def load_google_sheet():
         total = len(gh_extra)+len(lv_extra)+len(url_extra)
         if total: print(f"  📊 Google Sheet: +{total} companies loaded")
     except Exception as e:
-        print(f"  ⚠️ Google Sheet: {e}")
+        print(f"  ⚠️  Google Sheet: {e}")
     return gh_extra, lv_extra, url_extra
 
 # ═══════════════════════════════════════════════════════════
@@ -636,54 +519,39 @@ def run_scan(seen):
     lock    = threading.Lock()
     all_new = []
 
-    # Load Google Sheet extras
     gh_extra, lv_extra, url_extra = load_google_sheet()
-    all_gh  = {**GREENHOUSE_COMPANIES, **gh_extra}
-    all_lv  = {**LEVER_COMPANIES,      **lv_extra}
-    all_wd  = {**WORKDAY_COMPANIES,    **url_extra}
+    all_gh = {**GREENHOUSE_COMPANIES, **gh_extra}
+    all_lv = {**LEVER_COMPANIES,      **lv_extra}
+    all_wd = {**WORKDAY_COMPANIES,    **url_extra}
 
     tasks = []
-
-    # Build task list
-    for slug, name in all_gh.items():
-        tasks.append(("greenhouse", slug, name))
-    for slug, name in all_lv.items():
-        tasks.append(("lever", slug, name))
-    for label, url in INDEED_RSS_SEARCHES:
-        tasks.append(("indeed", label, url))
-    for label, url in LINKEDIN_SEARCHES:
-        tasks.append(("linkedin", label, url))
-    for name, url in all_wd.items():
-        tasks.append(("workday", name, url))
+    for slug, name in all_gh.items(): tasks.append(("greenhouse", slug, name))
+    for slug, name in all_lv.items(): tasks.append(("lever",      slug, name))
+    for label, url  in INDEED_RSS_SEARCHES: tasks.append(("indeed",  label, url))
+    for label, url  in LINKEDIN_SEARCHES:   tasks.append(("linkedin",label, url))
+    for name,  url  in all_wd.items():      tasks.append(("workday", name,  url))
 
     print(f"  🚀 Running {len(tasks)} tasks with {MAX_WORKERS} concurrent workers...")
 
     def run_task(task):
         kind = task[0]
         try:
-            if kind == "greenhouse":
-                return scrape_greenhouse(task[1], task[2], seen, lock)
-            elif kind == "lever":
-                return scrape_lever(task[1], task[2], seen, lock)
-            elif kind == "indeed":
-                return scrape_indeed_rss(task[1], task[2], seen, lock)
-            elif kind == "linkedin":
-                return scrape_linkedin(task[1], task[2], seen, lock)
-            elif kind == "workday":
-                return scrape_workday_page(task[1], task[2], seen, lock)
+            if   kind == "greenhouse": return scrape_greenhouse(task[1], task[2], seen, lock)
+            elif kind == "lever":      return scrape_lever(task[1], task[2], seen, lock)
+            elif kind == "indeed":     return scrape_indeed_rss(task[1], task[2], seen, lock)
+            elif kind == "linkedin":   return scrape_linkedin(task[1], task[2], seen, lock)
+            elif kind == "workday":    return scrape_workday_page(task[1], task[2], seen, lock)
         except Exception:
             return []
         return []
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {executor.submit(run_task, t): t for t in tasks}
-        done = 0
         for future in as_completed(futures):
             result = future.result() or []
             all_new.extend(result)
-            done += 1
             if result:
-                t = futures[future]
+                t    = futures[future]
                 name = t[2] if len(t) > 2 else t[1]
                 print(f"  ✅ {name}: {len(result)} new")
 
@@ -701,11 +569,12 @@ def main():
     total_co  = gh_count + lv_count + wd_count
 
     print(f"\n{'═'*62}")
-    print(f"  🎓 CoopRadar v4 — Ontario Co-op & Intern Alerts")
-    print(f"  📡 ntfy  : {NTFY_TOPIC}")
-    print(f"  🏢 Companies : {total_co} ({gh_count} Greenhouse + {lv_count} Lever + {wd_count} Workday/Custom)")
-    print(f"  🔍 Indeed RSS: {rss_count} searches | LinkedIn: {li_count} searches")
-    print(f"  🔁 Loops : {LOOP_MINUTES} × ~60s | Age limit: {MAX_AGE_DAYS} days")
+    print(f"  🎓 CoopRadar v4 — Winter 2027 / Jan 2027 Edition")
+    print(f"  📡 ntfy        : {NTFY_TOPIC}")
+    print(f"  🏢 Companies   : {total_co} ({gh_count} GH + {lv_count} Lever + {wd_count} Workday)")
+    print(f"  🔍 Indeed RSS  : {rss_count} searches | LinkedIn: {li_count} searches")
+    print(f"  📅 Target      : Winter 2027 / January 2027 intake")
+    print(f"  🔁 Loops       : {LOOP_MINUTES} × ~60s | Age limit: {MAX_AGE_DAYS} days")
     print(f"{'═'*62}")
 
     for cycle in range(LOOP_MINUTES):
@@ -718,15 +587,13 @@ def main():
         all_new = run_scan(seen)
 
         print(f"\n  📊 Cycle {cycle+1}: {len(all_new)} new jobs found")
-
         if all_new:
             print(f"  📱 Sending {len(all_new)} notification(s)...")
             for job in all_new:
                 notify(job["title"], job["company"], job["location"],
                        job["url"], job["source"])
                 time.sleep(0.15)
-
-        save_seen(seen)
+            save_seen(seen)
 
         if cycle < LOOP_MINUTES - 1:
             elapsed   = (datetime.now(timezone.utc) - cycle_start).seconds
