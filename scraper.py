@@ -90,7 +90,7 @@ ONTARIO_KEYWORDS = [
     "cambridge","guelph","oshawa","ajax","pickering","aurora","barrie",
     "kanata","nepean","richmond hill","thornhill","newmarket",
     " on,","on canada"," on "," ontario","greater toronto",
-    "gta","remote","hybrid",
+    "gta","remote","hybrid", "Canada"
 ]
 
 HEADERS = {
